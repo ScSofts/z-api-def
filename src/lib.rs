@@ -3,9 +3,9 @@ extern crate syn;
 extern crate quote;
 
 
+
 use quote::{quote, ToTokens};
 use syn::{Expr, FnArg, ItemTrait, parse_macro_input, TraitItemFn};
-
 
 
 ///
@@ -26,16 +26,16 @@ use syn::{Expr, FnArg, ItemTrait, parse_macro_input, TraitItemFn};
 ///     name: String,
 ///     year: i32,
 ///     path: String,
-///     data: Option<Value>
+///     data: Option<serde_json::Value>
 /// }
 ///
 /// #[Api]
 /// trait Api{
 ///     #[Get("/{id}/detail")]
-///     fn detail(&self, id: i32) -> serde_json::Result<Detail>;
+///     async fn detail(&self, id: i32) -> Result<Detail, Box<dyn std::error::Error>>;
 ///
 ///     #[Post("/detail")]
-///     fn detail_post(&self, id: i32) -> serde_json::Result<Detail>;
+///     async fn detail_post(&self, id: i32) -> Result<Detail, Box<dyn std::error::Error>>;
 /// }
 /// ```
 #[allow(non_snake_case)]
@@ -46,7 +46,11 @@ pub fn Get( args:proc_macro::TokenStream, input : proc_macro::TokenStream) -> pr
     let fn_sig = item_member_fn.sig;
     (quote!{
         #fn_sig{
-            serde_json::from_value::<_>( self.get(format!(#path) ) )
+            Box::pin(async move{
+                let value = self.get(format!(#path) ).await;
+                let value = value?;
+                Ok(serde_json::from_value::<_>( value )?)
+            })
         }
     }).into()
 }
@@ -69,16 +73,16 @@ pub fn Get( args:proc_macro::TokenStream, input : proc_macro::TokenStream) -> pr
 ///     name: String,
 ///     year: i32,
 ///     path: String,
-///     data: Option<Value>
+///     data: Option<serde_json::Value>
 /// }
 ///
 /// #[Api]
 /// trait Api{
 ///     #[Get("/{id}/detail")]
-///     fn detail(&self, id: i32) -> serde_json::Result<Detail>;
+///     async fn detail(&self, id: i32) -> Result<Detail, Box<dyn std::error::Error>>;
 ///
 ///     #[Post("/detail")]
-///     fn detail_post(&self, id: i32) -> serde_json::Result<Detail>;
+///     async fn detail_post(&self, id: i32) -> Result<Detail, Box<dyn std::error::Error>>;
 /// }
 /// ```
 #[allow(non_snake_case)]
@@ -98,7 +102,13 @@ pub fn Post( args:proc_macro::TokenStream, input : proc_macro::TokenStream) -> p
     (quote!{
         #fn_sig{
             use serde_json;
-            serde_json::from_value( self.post( format!(#path) , serde_json::from_str( format!(#args).as_str() )? ) )
+            Box::pin(async move{
+                let value =  self.post( format!(#path) , serde_json::from_str( format!(#args).as_str() )? )
+                    .await?;
+                Ok(serde_json::from_value(
+                   value
+                )?)
+            })
         }
     }).into()
 }
@@ -121,16 +131,16 @@ pub fn Post( args:proc_macro::TokenStream, input : proc_macro::TokenStream) -> p
 ///     name: String,
 ///     year: i32,
 ///     path: String,
-///     data: Option<Value>
+///     data: Option<serde_json::Value>
 /// }
 ///
 /// #[Api]
 /// trait Api{
 ///     #[Get("/{id}/detail")]
-///     fn detail(&self, id: i32) -> serde_json::Result<Detail>;
+///     async fn detail(&self, id: i32) -> Result<Detail, Box<dyn std::error::Error>>;
 ///
 ///     #[Post("/detail")]
-///     fn detail_post(&self, id: i32) -> serde_json::Result<Detail>;
+///     async fn detail_post(&self, id: i32) -> Result<Detail, Box<dyn std::error::Error>>;
 /// }
 /// ```
 #[allow(non_snake_case)]
@@ -142,10 +152,11 @@ pub fn Api( _: proc_macro::TokenStream, input : proc_macro::TokenStream) -> proc
     let items = item_trait.items.iter();
 
     (quote! {
-        #vis trait #trait_name {
+        #[async_trait::async_trait]
+        #vis trait #trait_name : Sync{
             #( #items )*
-            fn get(&self, path: String) -> serde_json::Value;
-            fn post(&self, path: String, data: serde_json::Value)  -> serde_json::Value;
+            async fn get(&self, path: String) -> Result<serde_json::Value, Box<dyn std::error::Error>>;
+            async fn post(&self, path: String, data: serde_json::Value)  -> Result<serde_json::Value, Box<dyn std::error::Error>>;
         }
 
     }).into()

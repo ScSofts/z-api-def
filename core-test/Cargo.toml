@@ -6,7 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = "0.1.68"
 serde = "1.0.164"
 serde_derive = "1.0.164"
 serde_json = "1.0.96"
+tokio = { version = "1.29.1", features = ["full"] }
 z-api-def = { path = ".." }
